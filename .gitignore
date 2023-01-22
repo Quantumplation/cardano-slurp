@@ -13,3 +13,6 @@ Cargo.lock
 # Added by cargo
 
 /target
+
+# Sync'd blocks from the cardano node
+blocks/
