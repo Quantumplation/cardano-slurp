@@ -8,7 +8,7 @@ use pallas::{
     codec::minicbor::{self, decode},
     crypto::hash::{Hasher, Hash},
     ledger::{
-        primitives::{byron::{BlockHead, EbbHead}, alonzo, babbage},
+        primitives::{byron::{BlockHead, EbbHead, Block, EbBlock}, alonzo, babbage},
         traverse::ComputeHash,
     },
     network::{
@@ -38,36 +38,50 @@ fn do_handshake(channel: StdChannel) {
     }
 }
 
-fn do_blockfetch(channel: StdChannel) {
-    let range = (
-        Point::Specific(
-            43847831,
-            hex::decode("15b9eeee849dd6386d3770b0745e0450190f7560e5159b1b3ab13b14b2684a45")
-                .unwrap(),
-        ),
-        Point::Specific(
-            43847844,
-            hex::decode("ff8d558a3d5a0e058beb3d94d26a567f75cd7d09ff5485aa0d0ebc38b61378d4")
-                .unwrap(),
-        ),
-    );
-
-    let mut client = blockfetch::Client::new(channel);
-
-    let blocks = client.fetch_range(range).unwrap();
-
-    for block in blocks {
-        log::info!("received block of size: {}", block.len());
-    }
-}
-
 struct BodySlurp {
     directory: PathBuf,
 }
 
 impl BodySlurp {
+
+    fn ebb_point(cbor: &Vec<u8>) -> Option<Point> {
+        type BlockWrapper = (u16, EbBlock);
+        let (_, block) = minicbor::decode::<BlockWrapper>(cbor).ok()?;
+        let header = block.header;
+        Some(Point::Specific(header.consensus_data.epoch_id * 21600, header.compute_hash().to_vec()))
+    }
+
+    fn byron_point(cbor: &Vec<u8>) -> Option<Point> {
+        type BlockWrapper = (u16, Block);
+        let (_, block) = minicbor::decode::<BlockWrapper>(cbor).ok()?;
+        let header = block.header;
+        Some(Point::Specific(header.consensus_data.0.epoch * 21600 + header.consensus_data.0.slot, header.compute_hash().to_vec()))
+    }
+
+    fn shelley_or_alonzo_point(cbor: &Vec<u8>) -> Option<Point> {
+        let block = minicbor::decode::<alonzo::Block>(cbor).ok()?;
+        let header = block.header;
+        Some(Point::Specific(header.header_body.slot, header.compute_hash().to_vec()))
+    }
+
+    fn babbage_point(cbor: &Vec<u8>) -> Option<Point> {
+        let block = minicbor::decode::<babbage::Block>(cbor).ok()?;
+        let header = block.header;
+        Some(Point::Specific(header.header_body.slot, header.compute_hash().to_vec()))
+    }
+
     fn handle_body(directory: &PathBuf, body: Vec<u8>) {
-        log::info!("received block of size: {}", body.len())
+        let point = BodySlurp::ebb_point(&body)
+            .or_else(|| BodySlurp::byron_point(&body))
+            .or_else(|| BodySlurp::shelley_or_alonzo_point(&body))
+            .or_else(|| BodySlurp::babbage_point(&body))
+            .expect("unrecognized block");
+        log::info!("downloaded block {:?} ({} bytes)", point, body.len());
+
+        let Point::Specific(slot, hash) = point.clone() else { unreachable!("should be guaranteed by the methods above") };
+        let file = format!("{}-{}", slot, hex::encode(hash));
+        let path = directory.join(file);
+        fs::write(path, body).expect("could not save body");
     }
 
     fn slurp(&self, channel: StdChannel, block_batches: Receiver<(Point, Point)>) -> JoinHandle<()> {
@@ -96,22 +110,22 @@ struct HeaderSlurp {
 
 impl HeaderSlurp {
 
-    fn ebb_hash_and_slot(cbor: &Vec<u8>) -> Option<Point> {
+    fn ebb_point(cbor: &Vec<u8>) -> Option<Point> {
         let header = minicbor::decode::<EbbHead>(cbor).ok()?;
         Some(Point::Specific(header.consensus_data.epoch_id * 21600, header.compute_hash().to_vec())) 
     }
 
-    fn byron_hash_and_slot(cbor: &Vec<u8>) -> Option<Point> {
+    fn byron_point(cbor: &Vec<u8>) -> Option<Point> {
         let header = minicbor::decode::<BlockHead>(cbor).ok()?;
         Some(Point::Specific(header.consensus_data.0.epoch * 21600 + header.consensus_data.0.slot, header.compute_hash().to_vec()))
     }
 
-    fn shelley_or_alonzo_hash_and_slot(cbor: &Vec<u8>) -> Option<Point> {
+    fn shelley_or_alonzo_point(cbor: &Vec<u8>) -> Option<Point> {
         let header = minicbor::decode::<alonzo::Header>(cbor).ok()?;
         Some(Point::Specific(header.header_body.slot, header.compute_hash().to_vec()))
     }
 
-    fn babbage_hash_and_slot(cbor: &Vec<u8>) -> Option<Point> {
+    fn babbage_point(cbor: &Vec<u8>) -> Option<Point> {
         let header = minicbor::decode::<babbage::Header>(cbor).ok()?;
         Some(Point::Specific(header.header_body.slot, header.compute_hash().to_vec()))
     }
@@ -119,10 +133,10 @@ impl HeaderSlurp {
     fn handle_header(directory: &PathBuf, h: HeaderContent) -> Point {
         // We skip byron blocks for now, because to know their slot, we need to know the slot of the *next* block, which is annoying
         let point = 
-            HeaderSlurp::ebb_hash_and_slot(&h.cbor)
-            .or_else(|| HeaderSlurp::byron_hash_and_slot(&h.cbor))
-            .or_else(|| HeaderSlurp::shelley_or_alonzo_hash_and_slot(&h.cbor))
-            .or_else(|| HeaderSlurp::babbage_hash_and_slot(&h.cbor))
+            HeaderSlurp::ebb_point(&h.cbor)
+            .or_else(|| HeaderSlurp::byron_point(&h.cbor))
+            .or_else(|| HeaderSlurp::shelley_or_alonzo_point(&h.cbor))
+            .or_else(|| HeaderSlurp::babbage_point(&h.cbor))
             .expect("unrecognized block");
 
         log::info!("rolling forward, {:?}", point);
@@ -151,12 +165,14 @@ impl HeaderSlurp {
         let block_batches = self.block_batches.clone();
         thread::spawn(move || {
             let mut start: Point = Point::Origin;
+            let mut prev: Point = Point::Origin;
             for _ in 0.. {
                 let next = client.request_next().unwrap();
 
                 match next {
                     chainsync::NextResponse::RollForward(h, _) => {
                         let point = HeaderSlurp::handle_header(&directory, h);
+                        prev = point.clone();
 
                         if let Point::Origin = start {
                             start = point.clone();
@@ -165,9 +181,14 @@ impl HeaderSlurp {
                         if point.slot_or_default() - start.slot_or_default() >= batch_size.into() {
                             block_batches.send((start, point.clone())).expect("unable to send block batch");
                             start = point.clone();
-                        } 
+                        }
                     },
-                    chainsync::NextResponse::RollBackward(x, _) => log::info!("rollback to {:?}", x),
+                    chainsync::NextResponse::RollBackward(x, _) => {
+                        log::info!("rollback to {:?}", x);
+                        if start != prev && start != Point::Origin {
+                            block_batches.send((start.clone(), prev.clone())).expect("unable to send block batch before rollback");
+                        }
+                    },
                     chainsync::NextResponse::Await => log::info!("tip of chaing reached"),
                 };
             }
@@ -213,7 +234,7 @@ fn main() {
 
     let (sender, receiver) = mpsc::sync_channel(10);
 
-    let headers = HeaderSlurp { directory: args.directory.join("headers"), batch_size: 20, block_batches: sender };
+    let headers = HeaderSlurp { directory: args.directory.join("headers"), batch_size: 5, block_batches: sender };
     let bodies = BodySlurp { directory: args.directory.join("bodies") };
 
     // execute the chainsync flow from an arbitrary point in the chain
