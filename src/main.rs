@@ -96,31 +96,33 @@ struct HeaderSlurp {
 
 impl HeaderSlurp {
 
-    fn ebb_hash_and_slot(height: u64, cbor: &Vec<u8>) -> Option<Point> {
-        Some(Point::Specific(height, minicbor::decode::<EbbHead>(cbor).ok()?.compute_hash().to_vec()))
+    fn ebb_hash_and_slot(cbor: &Vec<u8>) -> Option<Point> {
+        let header = minicbor::decode::<EbbHead>(cbor).ok()?;
+        Some(Point::Specific(header.consensus_data.epoch_id * 21600, header.compute_hash().to_vec())) 
     }
 
-    fn byron_hash_and_slot(height: u64, cbor: &Vec<u8>) -> Option<Point> {
-        Some(Point::Specific(height, minicbor::decode::<BlockHead>(cbor).ok()?.compute_hash().to_vec()))
+    fn byron_hash_and_slot(cbor: &Vec<u8>) -> Option<Point> {
+        let header = minicbor::decode::<BlockHead>(cbor).ok()?;
+        Some(Point::Specific(header.consensus_data.0.epoch * 21600 + header.consensus_data.0.slot, header.compute_hash().to_vec()))
     }
 
-    fn shelley_or_alonzo_hash_and_slot(_: u64, cbor: &Vec<u8>) -> Option<Point> {
+    fn shelley_or_alonzo_hash_and_slot(cbor: &Vec<u8>) -> Option<Point> {
         let header = minicbor::decode::<alonzo::Header>(cbor).ok()?;
         Some(Point::Specific(header.header_body.slot, header.compute_hash().to_vec()))
     }
 
-    fn babbage_hash_and_slot(_: u64, cbor: &Vec<u8>) -> Option<Point> {
+    fn babbage_hash_and_slot(cbor: &Vec<u8>) -> Option<Point> {
         let header = minicbor::decode::<babbage::Header>(cbor).ok()?;
         Some(Point::Specific(header.header_body.slot, header.compute_hash().to_vec()))
     }
 
-    fn handle_header(directory: &PathBuf, height: u64, h: HeaderContent) -> Point {
+    fn handle_header(directory: &PathBuf, h: HeaderContent) -> Point {
         // We skip byron blocks for now, because to know their slot, we need to know the slot of the *next* block, which is annoying
         let point = 
-            HeaderSlurp::ebb_hash_and_slot(height, &h.cbor)
-            .or_else(|| HeaderSlurp::byron_hash_and_slot(height, &h.cbor))
-            .or_else(|| HeaderSlurp::shelley_or_alonzo_hash_and_slot(height, &h.cbor))
-            .or_else(|| HeaderSlurp::babbage_hash_and_slot(height, &h.cbor))
+            HeaderSlurp::ebb_hash_and_slot(&h.cbor)
+            .or_else(|| HeaderSlurp::byron_hash_and_slot(&h.cbor))
+            .or_else(|| HeaderSlurp::shelley_or_alonzo_hash_and_slot(&h.cbor))
+            .or_else(|| HeaderSlurp::babbage_hash_and_slot(&h.cbor))
             .expect("unrecognized block");
 
         log::info!("rolling forward, {:?}", point);
@@ -149,14 +151,18 @@ impl HeaderSlurp {
         let block_batches = self.block_batches.clone();
         thread::spawn(move || {
             let mut start: Point = Point::Origin;
-            for height in 0.. {
+            for _ in 0.. {
                 let next = client.request_next().unwrap();
 
                 match next {
                     chainsync::NextResponse::RollForward(h, _) => {
-                        let point = HeaderSlurp::handle_header(&directory, height, h);
+                        let point = HeaderSlurp::handle_header(&directory, h);
 
-                        if point.slot_or_default() - start.slot_or_default() > batch_size.into() {
+                        if let Point::Origin = start {
+                            start = point.clone();
+                        }
+
+                        if point.slot_or_default() - start.slot_or_default() >= batch_size.into() {
                             block_batches.send((start, point.clone())).expect("unable to send block batch");
                             start = point.clone();
                         } 
