@@ -115,7 +115,11 @@ impl HeaderSlurp {
             let mut start: Point = Point::Origin;
             let mut prev: Point = Point::Origin;
             loop {
-                let next = client.request_next().unwrap();
+                let next = if client.has_agency() {
+                  client.request_next().unwrap()
+                } else {
+                  client.recv_while_can_await().unwrap()
+                };
 
                 match next {
                     chainsync::NextResponse::RollForward(h, _) => {
