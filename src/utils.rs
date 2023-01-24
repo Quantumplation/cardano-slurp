@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use pallas::network::miniprotocols::Point;
 
-const LARGE_BUCKET_SIZE: u64 = 200_000_000;
+const LARGE_BUCKET_SIZE: u64 = 20_000_000;
 const SMALL_BUCKET_SIZE: u64 = 200_000;
 
 pub fn artifact_path(base_directory: PathBuf, point: Point) -> PathBuf {
