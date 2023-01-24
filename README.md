@@ -13,7 +13,7 @@ cardano-slurp
 You can specify custom values via command line or environment variable:
 
 ```shell
-cardano-slurp --relay relays.cardano-mainnet.iohk.io:3001 --directory db
+cardano-slurp --relay relays.cardano-mainnet.iohk.io:3001 --directory db --fallback-point 78416/f85c52e97c6ec4e171d92789e32331e624ee7a0c7ba18b578062727edb7d61f7
 
 RELAY=relays-new.cardano-mainnet.iohk.io:3001 cargo-slurp
 ```
@@ -37,6 +37,8 @@ The file structure after running (assuming default parameters) should look like 
      - {large-bucket}    | See note on bucketing below
        - {small-bucket}  |
          - {slot}-{hash} | The block body we observed at {slot} with the given {hash}; there may be multiples in the case of rollbacks or different blocks received from different relays
+   - cursors             | Cursors, tracking how far we've sync'd with any given relay
+    - {relay}            | The cursor file, serialized as CBOR
 ```
 
 > NOTE: Common wisdom seems to indicate that you should keep directories to around 10k entries so as not to destroy performance of directory scan operations.  Thus, we introduce two layers of nesting, called buckets, to occasionally roll over to an empty directory and keep the sizes small.  Each bucket represents the starting slot of a range which contains all the blocks in that subdirectory.  The large bucket rolls over ever 20 million slots, and the small bucket rolls over every 200 thousand slots.  This ensures that each large-bucket directory has no more than 1000 entries, and each small-bucket directory has no more than 10,000 entries.  One large-bucket represnets roughly 230 days of blocks in the shelley era. 

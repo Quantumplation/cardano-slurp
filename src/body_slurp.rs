@@ -1,7 +1,7 @@
 use std::{
     fs,
     path::PathBuf,
-    sync::mpsc::Receiver,
+    sync::{mpsc::Receiver, Mutex, Arc},
     thread::{self, JoinHandle},
 };
 
@@ -17,17 +17,21 @@ use pallas::{
     },
 };
 
+use crate::cursor::{Cursor, SerializablePoint};
+
 pub struct BodySlurp {
     pub directory: PathBuf,
 
+    cursor_mutex: Arc<Mutex<()>>,
     relay: String,
     join_handle: Option<JoinHandle<()>>,
 }
 
 impl BodySlurp {
-    pub fn new(relay: String, directory: PathBuf) -> Self {
+    pub fn new(relay: String, directory: PathBuf, cursor_mutex: Arc<Mutex<()>>) -> Self {
         Self {
             directory,
+            cursor_mutex,
             relay,
             join_handle: None,
         }
@@ -73,7 +77,7 @@ impl BodySlurp {
         ))
     }
 
-    fn handle_body(relay: &String, directory: &PathBuf, body: Vec<u8>) {
+    fn handle_body(cursor_mutex: Arc<Mutex<()>>, relay: &String, base_directory: &PathBuf, body: Vec<u8>) {
         let point = BodySlurp::ebb_point(&body)
             .or_else(|| BodySlurp::byron_point(&body))
             .or_else(|| BodySlurp::shelley_or_alonzo_point(&body))
@@ -81,10 +85,21 @@ impl BodySlurp {
             .expect("unrecognized block");
         log::info!(target: &relay[..11], "downloaded block {:?} ({} bytes)", point, body.len());
 
-        let path = crate::utils::artifact_path(directory.clone(), point);
+        let path = crate::utils::artifact_path(base_directory.join("bodies"), point.clone());
         fs::create_dir_all(path.parent().unwrap())
             .expect(format!("unable to creact directory {:?}", path).as_str());
         fs::write(path, body).expect("could not save body");
+
+        let gaurd = cursor_mutex.lock();
+
+        let Point::Specific(slot, hash) = point else { unreachable!("") };
+        let cursor = Cursor{
+          points: vec![SerializablePoint{ slot, block_hash: hash }],
+        };
+        let cursor_bytes = serde_cbor::to_vec(&cursor).expect("unable to serialize cursor");
+        fs::write(base_directory.join("cursors").join(relay), cursor_bytes).expect("unable to write cursor file");
+
+        drop(gaurd);
     }
 
     pub fn slurp(&mut self, channel: StdChannel, block_batches: Receiver<(Point, Point)>) {
@@ -92,6 +107,7 @@ impl BodySlurp {
 
         let directory = self.directory.clone();
         let relay = self.relay.clone();
+        let cursor = self.cursor_mutex.clone();
         self.join_handle = Some(thread::spawn(move || {
             let mut client = blockfetch::Client::new(channel);
             loop {
@@ -102,7 +118,7 @@ impl BodySlurp {
                     .fetch_range(next_range)
                     .expect("unable to query block range");
                 for block in blocks {
-                    BodySlurp::handle_body(&relay, &directory, block);
+                    BodySlurp::handle_body(cursor.clone(), &relay, &directory, block);
                 }
             }
         }));

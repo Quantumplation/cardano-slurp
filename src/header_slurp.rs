@@ -1,10 +1,11 @@
 use std::{
     fs,
-    path::PathBuf,
-    sync::mpsc,
+    path::{PathBuf, Path},
+    sync::{mpsc, Arc, Mutex},
     thread::{self, JoinHandle},
 };
 
+use anyhow::Context;
 use pallas::{
     codec::minicbor,
     ledger::{
@@ -20,12 +21,17 @@ use pallas::{
     },
 };
 
+use crate::cursor::Cursor;
+
 pub struct HeaderSlurp {
+    pub base_directory: PathBuf,
     pub directory: PathBuf,
     pub batch_size: u8,
 
     pub block_batches: mpsc::SyncSender<(Point, Point)>,
 
+    cursor_mutex: Arc<Mutex<()>>,
+    default_point: Option<Point>,
     relay: String,
     join_handle: Option<JoinHandle<()>>,
 }
@@ -34,14 +40,19 @@ impl HeaderSlurp {
     pub fn new(
         relay: String,
         directory: PathBuf,
+        default_point: Option<Point>,
         batch_size: u8,
+        cursor_mutex: Arc<Mutex<()>>,
         block_batches: mpsc::SyncSender<(Point, Point)>,
     ) -> Self {
         Self {
-            directory,
+            base_directory: directory.clone(),
+            directory: directory.join("headers"),
             relay,
+            default_point,
             batch_size,
             block_batches,
+            cursor_mutex,
             join_handle: None,
         }
     }
@@ -95,10 +106,27 @@ impl HeaderSlurp {
         return point;
     }
 
-    pub fn slurp(&mut self, channel: StdChannel) {
+    pub fn slurp(&mut self, channel: StdChannel) -> anyhow::Result<()> {
         fs::create_dir_all(&self.directory).expect("couldn't create directory");
 
-        let known_points = vec![Point::Specific(83026460, hex::decode("d87101f97ff2719ef4721b25a50e21b286285b543f7764c875170ca396792001").unwrap())];
+        // Read the latest cursor
+        let gaurd = self.cursor_mutex.lock().unwrap();
+        
+        let cursor_file = self.base_directory.join("cursors").join(&self.relay);
+        let known_points = if cursor_file.exists() {
+            log::info!(target: &self.relay[..11], "reading cursor file");
+            let cursor_contents = fs::read(cursor_file).with_context(|| "unable to load cursor file")?;
+            let cursor: Cursor = serde_cbor::from_slice(&cursor_contents[..]).with_context(|| "unable to parse cursor")?;
+            cursor.to_points()
+        } else if let Some(default_point) = self.default_point.clone() {
+            log::info!(target: &self.relay[..11], "syncing from default point {:?}", &self.default_point);
+            vec![default_point]
+        } else {
+            log::info!(target: &self.relay[..11], "syncing from origin");
+            vec![Point::Origin]
+        };
+
+        drop(gaurd);
 
         let mut client = chainsync::N2NClient::new(channel);
 
@@ -168,6 +196,7 @@ impl HeaderSlurp {
                 };
             }
         }));
+        Ok(())
     }
 
     pub fn join(&mut self) -> thread::Result<()> {

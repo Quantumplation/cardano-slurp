@@ -4,6 +4,8 @@ Added
  - Add support for multiple relays
  - Added better directory structure for saved blocks
  - Added support for reading `topology.json` files
+ - Save cursors for each relay, so we can resume where we left off
+ - Allow specifying a starting point as an argument
 
 [v0.1.0] - 2023-01-23
 

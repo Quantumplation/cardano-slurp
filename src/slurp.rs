@@ -1,7 +1,7 @@
 use std::{
     path::PathBuf,
-    sync::mpsc::{self, Receiver},
-    thread,
+    sync::{mpsc::{self, Receiver}, Mutex, Arc},
+    thread, fs,
 };
 
 use pallas::network::{
@@ -21,11 +21,14 @@ pub struct Slurp {
 }
 
 impl Slurp {
-    pub fn new(directory: PathBuf, relay: String) -> Self {
+    pub fn new(directory: PathBuf, relay: String, default_point: Option<Point>) -> Self {
         let (sender, receiver) = mpsc::sync_channel(10);
 
-        let headers = HeaderSlurp::new(relay.clone(), directory.join("headers"), 5, sender);
-        let bodies = BodySlurp::new(relay.clone(), directory.join("bodies"));
+        fs::create_dir_all(directory.join("cursors")).expect("unable to create cursor directory");
+
+        let cursor_mutex = Arc::new(Mutex::new(()));
+        let headers = HeaderSlurp::new(relay.clone(), directory.clone(), default_point, 5, cursor_mutex.clone(), sender);
+        let bodies = BodySlurp::new(relay.clone(), directory.clone(), cursor_mutex.clone());
 
         Self {
             directory: directory,
