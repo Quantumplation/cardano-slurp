@@ -16,3 +16,5 @@ Cargo.lock
 
 # Sync'd blocks from the cardano node
 blocks/
+# Topology file being used
+topology.json
