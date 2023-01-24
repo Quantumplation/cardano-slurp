@@ -106,7 +106,7 @@ impl HeaderSlurp {
 
         let directory = self.directory.clone();
         let relay = self.relay.clone();
-        let batch_size = self.batch_size;
+        let mut batch_size = self.batch_size;
         let block_batches = self.block_batches.clone();
 
         log::info!(target: &relay[..11], "intersected point is {:?}", point);
@@ -150,7 +150,8 @@ impl HeaderSlurp {
                         prev = rollback_to.clone();
                     }
                     chainsync::NextResponse::Await => {
-                        log::info!(target: &relay[..11], "tip of chain reached")
+                        log::info!(target: &relay[..11], "tip of chain reached");
+                        batch_size = 1;
                     }
                 };
             }
