@@ -5,8 +5,7 @@ use std::{
 
 use clap::Parser;
 use pallas::{
-    codec::minicbor::{self, decode},
-    crypto::hash::{Hasher, Hash},
+    codec::minicbor::{self},
     ledger::{
         primitives::{byron::{BlockHead, EbbHead, Block, EbBlock}, alonzo, babbage},
         traverse::ComputeHash,
