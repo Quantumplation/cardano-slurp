@@ -1,3 +1,10 @@
+[v0.1.1 (DRAFT)] - 2023-01-
+
+Added
+ - Add support for multiple relays
+ - Added better directory structure for saved blocks
+ - Added support for reading `topology.json` files
+
 [v0.1.0] - 2023-01-23
 
 Added

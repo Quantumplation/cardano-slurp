@@ -13,10 +13,16 @@ cardano-slurp
 You can specify custom values via command line or environment variable:
 
 ```shell
-cargo-slurp --relay relays.cardano-mainnet.iohk.io:3001 --directory db
+cardano-slurp --relay relays.cardano-mainnet.iohk.io:3001 --directory db
 
 RELAY=relays-new.cardano-mainnet.iohk.io:3001 cargo-slurp
-``` 
+```
+
+Rather than specifying relays individually, you can specify a topology.json file in the same format that the cardano-node reads:
+
+```shell
+cardano-slurp --topology-file topology.json
+```
 
 ## Format
 
