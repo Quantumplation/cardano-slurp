@@ -9,6 +9,8 @@ use pallas::network::{
     multiplexer::{bearers::Bearer, StdChannel, StdPlexer},
 };
 
+use anyhow::Error;
+
 use crate::{body_slurp::BodySlurp, header_slurp::HeaderSlurp};
 
 pub struct Slurp {
@@ -53,12 +55,12 @@ impl Slurp {
         }
     }
 
-    pub fn slurp(&mut self) {
+    pub fn slurp(&mut self) -> anyhow::Result<()> {
         log::info!(target: &self.relay[..11], "starting slurp for a relay");
 
         // setup a TCP socket to act as data bearer between our agents and the remote
         // relay.
-        let bearer = Bearer::connect_tcp(self.relay.clone()).unwrap();
+        let bearer = Bearer::connect_tcp(self.relay.clone())?;
 
         // setup the multiplexer by specifying the bearer and the IDs of the
         // miniprotocols to use
@@ -76,6 +78,7 @@ impl Slurp {
         // execute the chainsync flow from an arbitrary point in the chain
         self.headers.slurp(channel2);
         self.bodies.slurp(channel3, self.receiver.take().unwrap());
+        Ok(())
     }
 
     pub fn join(&mut self) -> thread::Result<()> {

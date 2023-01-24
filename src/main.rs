@@ -1,7 +1,11 @@
+use std::fs;
+
 use clap::Parser;
 use slurp::Slurp;
+use topology::Topology;
 
 mod args;
+mod topology;
 mod body_slurp;
 mod header_slurp;
 mod slurp;
@@ -17,9 +21,24 @@ fn main() {
     let mut connections = vec![];
 
     for relay in args.relay {
-        let mut slurp = Slurp::new(args.directory.clone(), relay);
-        slurp.slurp();
+        let slurp = Slurp::new(args.directory.clone(), relay);
         connections.push(slurp);
+    }
+
+    if let Some(topology_file) = args.topology_file {
+        let file_contents = fs::read_to_string(topology_file).expect("unable to open topology file");
+        let topology: Topology = serde_json::from_str(&file_contents).expect("unable to parse topology file");
+        for producer in topology.producers {
+            let url = format!("{}:{}", producer.address, producer.port);
+            let slurp = Slurp::new(args.directory.clone(), url);
+            connections.push(slurp);
+        }
+    }
+
+    for connection in connections.iter_mut() {
+        if let Err(e) = connection.slurp() {
+            log::warn!("connection refused from {}: {}", connection.relay, e);
+        }
     }
 
     for connection in connections.iter_mut() {

@@ -98,7 +98,7 @@ impl HeaderSlurp {
     pub fn slurp(&mut self, channel: StdChannel) {
         fs::create_dir_all(&self.directory).expect("couldn't create directory");
 
-        let known_points = vec![Point::Specific(82992205, hex::decode("fb2e8693657a73be00027e71d15c37cafc14a79e72d08b5506295dbde29c8f38").unwrap())];
+        let known_points = vec![Point::Specific(83026460, hex::decode("d87101f97ff2719ef4721b25a50e21b286285b543f7764c875170ca396792001").unwrap())];
 
         let mut client = chainsync::N2NClient::new(channel);
 
