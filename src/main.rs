@@ -41,6 +41,27 @@ struct BodySlurp {
     directory: PathBuf,
 }
 
+const LARGE_BUCKET_SIZE: u64 = 200_000_000;
+const SMALL_BUCKET_SIZE: u64 =     200_000;
+
+fn artifact_path(base_directory: PathBuf, point: Point) -> PathBuf {
+    let Point::Specific(slot, hash) = point else { panic!("must call artifact_subdirectory with a specific point") };
+
+    // [Bucketing]: We store files in {directory}/{upper_bucket}/{lower_bucket}/{slot}-{hash}
+    // the upper/lower bucket ensures that we don't have *too* many files per directory
+    // typically you should try to avoid having more than 10k files in a directory
+    // each upper bucket rolls over every 20_000_000 slots, which is around 230 days
+    // each lower bucket rolls over every 200_000 slots, which is around 2 days
+    // each upper bucket will have 1000 subdirectories, and each subdirectory will have on average 10k files
+    let upper_bucket = format!("{}", slot - (slot % LARGE_BUCKET_SIZE));
+    let lower_bucket = format!("{}", slot - (slot % SMALL_BUCKET_SIZE));
+    let sub_directory = base_directory.join(upper_bucket).join(lower_bucket);
+    fs::create_dir_all(sub_directory.clone()).expect(format!("unable to creact directory {:?}", sub_directory).as_str());
+    let file = format!("{}-{}", slot, hex::encode(hash));
+    
+    sub_directory.join(file)
+}
+
 impl BodySlurp {
 
     fn ebb_point(cbor: &Vec<u8>) -> Option<Point> {
@@ -77,9 +98,7 @@ impl BodySlurp {
             .expect("unrecognized block");
         log::info!("downloaded block {:?} ({} bytes)", point, body.len());
 
-        let Point::Specific(slot, hash) = point.clone() else { unreachable!("should be guaranteed by the methods above") };
-        let file = format!("{}-{}", slot, hex::encode(hash));
-        let path = directory.join(file);
+        let path = artifact_path(directory.clone(), point);
         fs::write(path, body).expect("could not save body");
     }
 
@@ -140,10 +159,7 @@ impl HeaderSlurp {
 
         log::info!("rolling forward, {:?}", point);
         
-        // This is guaranteed by the methods above
-        let Point::Specific(slot, hash) = point.clone() else { unreachable!("should be guaranteed by the methods above") };
-        let file = format!("{}-{}", slot, hex::encode(hash));
-        let path = directory.join(file);
+        let path = artifact_path(directory.clone(), point.clone());
         fs::write(path, h.cbor).expect("could not save header");
         return point;
     }
@@ -162,10 +178,11 @@ impl HeaderSlurp {
         let directory = self.directory.clone();
         let batch_size = self.batch_size;
         let block_batches = self.block_batches.clone();
+
         thread::spawn(move || {
             let mut start: Point = Point::Origin;
             let mut prev: Point = Point::Origin;
-            for _ in 0.. {
+            loop {
                 let next = client.request_next().unwrap();
 
                 match next {
@@ -182,11 +199,15 @@ impl HeaderSlurp {
                             start = point.clone();
                         }
                     },
-                    chainsync::NextResponse::RollBackward(x, _) => {
-                        log::info!("rollback to {:?}", x);
+                    chainsync::NextResponse::RollBackward(rollback_to, _) => {
+                        log::info!("rollback to {:?}", rollback_to);
+                        // Make sure we download these block ranges before rolling back
                         if start != prev && start != Point::Origin {
                             block_batches.send((start.clone(), prev.clone())).expect("unable to send block batch before rollback");
                         }
+                        // Rolling back in our dumb client is easy :)
+                        start = rollback_to.clone();
+                        prev = rollback_to.clone();
                     },
                     chainsync::NextResponse::Await => log::info!("tip of chaing reached"),
                 };
