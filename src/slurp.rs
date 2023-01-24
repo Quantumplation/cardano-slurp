@@ -45,16 +45,16 @@ impl Slurp {
 
         match confirmation {
             handshake::Confirmation::Accepted(v, _) => {
-                log::info!(target: self.relay.as_str(), "hand-shake accepted, using version {}", v)
+                log::info!(target: &self.relay[..11], "hand-shake accepted, using version {}", v)
             }
             handshake::Confirmation::Rejected(x) => {
-                log::info!(target: self.relay.as_str(), "hand-shake rejected with reason {:?}", x)
+                log::info!(target: &self.relay[..11], "hand-shake rejected with reason {:?}", x)
             }
         }
     }
 
     pub fn slurp(&mut self) {
-        log::info!(target: self.relay.as_str(), "starting slurp for a relay");
+        log::info!(target: &self.relay[..11], "starting slurp for a relay");
 
         // setup a TCP socket to act as data bearer between our agents and the remote
         // relay.

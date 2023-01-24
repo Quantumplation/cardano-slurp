@@ -77,7 +77,7 @@ impl BodySlurp {
             .or_else(|| BodySlurp::shelley_or_alonzo_point(&body))
             .or_else(|| BodySlurp::babbage_point(&body))
             .expect("unrecognized block");
-        log::info!(target: relay.as_str(), "downloaded block {:?} ({} bytes)", point, body.len());
+        log::info!(target: &relay[..11], "downloaded block {:?} ({} bytes)", point, body.len());
 
         let path = crate::utils::artifact_path(directory.clone(), point);
         fs::create_dir_all(path.parent().unwrap())

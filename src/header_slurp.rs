@@ -84,9 +84,9 @@ impl HeaderSlurp {
             .or_else(|| HeaderSlurp::byron_point(&h.cbor))
             .or_else(|| HeaderSlurp::shelley_or_alonzo_point(&h.cbor))
             .or_else(|| HeaderSlurp::babbage_point(&h.cbor))
-            .expect("unrecognized block");
+            .expect("unrecognized block header");
 
-        log::info!(target: relay.as_str(), "rolling forward, {:?}", point);
+        log::info!(target: &relay[..11], "rolling forward, {:?}", point);
 
         let path = crate::utils::artifact_path(directory.clone(), point.clone());
         fs::create_dir_all(path.parent().unwrap())
@@ -109,7 +109,7 @@ impl HeaderSlurp {
         let batch_size = self.batch_size;
         let block_batches = self.block_batches.clone();
 
-        log::info!(target: relay.as_str(), "intersected point is {:?}", point);
+        log::info!(target: &relay[..11], "intersected point is {:?}", point);
 
         self.join_handle = Some(thread::spawn(move || {
             let mut start: Point = Point::Origin;
@@ -134,7 +134,7 @@ impl HeaderSlurp {
                         }
                     }
                     chainsync::NextResponse::RollBackward(rollback_to, _) => {
-                        log::info!(target: relay.as_str(), "rollback to {:?}", rollback_to);
+                        log::info!(target: &relay[..11], "rollback to {:?}", rollback_to);
                         // Make sure we download these block ranges before rolling back
                         if start != prev && start != Point::Origin {
                             block_batches
@@ -146,7 +146,7 @@ impl HeaderSlurp {
                         prev = rollback_to.clone();
                     }
                     chainsync::NextResponse::Await => {
-                        log::info!(target: relay.as_str(), "tip of chain reached")
+                        log::info!(target: &relay[..11], "tip of chain reached")
                     }
                 };
             }
