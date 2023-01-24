@@ -28,7 +28,7 @@ cardano-slurp --topology-file topology.json
 
 The file structure after running (assuming default parameters) should look like this:
 ```
- - blocks                | Contains all persisted data
+ - db                    | Contains all persisted data
    - headers             | All downloaded headers
      - {large-bucket}    | See note on bucketing below
        - {small-bucket}  |

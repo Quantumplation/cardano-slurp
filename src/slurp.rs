@@ -9,8 +9,6 @@ use pallas::network::{
     multiplexer::{bearers::Bearer, StdChannel, StdPlexer},
 };
 
-use anyhow::Error;
-
 use crate::{body_slurp::BodySlurp, header_slurp::HeaderSlurp};
 
 pub struct Slurp {

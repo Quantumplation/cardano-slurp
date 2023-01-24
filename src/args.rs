@@ -14,6 +14,6 @@ pub struct Args {
     pub topology_file: Option<PathBuf>,
 
     /// The directory to save blocks into
-    #[arg(short, long, default_value = "blocks")]
+    #[arg(short, long, default_value = "db")]
     pub directory: PathBuf,
 }
