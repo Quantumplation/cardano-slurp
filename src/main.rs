@@ -198,12 +198,12 @@ impl HeaderSlurp {
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Args {
-    // The cardano relay node to connect to
-    #[arg(default_value = "relays-new.cardano-mainnet.iohk.io:3001")]
+    /// The cardano relay node to connect to
+    #[arg(short, long, default_value = "relays-new.cardano-mainnet.iohk.io:3001")]
     relay: String,
 
-    // The directory to save blocks into
-    #[arg(default_value = "blocks")]
+    /// The directory to save blocks into
+    #[arg(short, long, default_value = "blocks")]
     directory: PathBuf,
 }
 
