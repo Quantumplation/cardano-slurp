@@ -98,7 +98,7 @@ impl HeaderSlurp {
     pub fn slurp(&mut self, channel: StdChannel) {
         fs::create_dir_all(&self.directory).expect("couldn't create directory");
 
-        let known_points = vec![Point::Origin];
+        let known_points = vec![Point::Specific(82992205, hex::decode("fb2e8693657a73be00027e71d15c37cafc14a79e72d08b5506295dbde29c8f38").unwrap())];
 
         let mut client = chainsync::N2NClient::new(channel);
 
@@ -112,8 +112,9 @@ impl HeaderSlurp {
         log::info!(target: &relay[..11], "intersected point is {:?}", point);
 
         self.join_handle = Some(thread::spawn(move || {
-            let mut start: Point = Point::Origin;
-            let mut prev: Point = Point::Origin;
+            let mut start: Option<Point> = None;
+            let mut prev: Option<Point> = None;
+            let mut current_batch = 0;
             loop {
                 let next = if client.has_agency() {
                   client.request_next().unwrap()
@@ -124,34 +125,45 @@ impl HeaderSlurp {
                 match next {
                     chainsync::NextResponse::RollForward(h, _) => {
                         let point = HeaderSlurp::handle_header(&relay, &directory, h);
-                        prev = point.clone();
-
-                        if let Point::Origin = start {
-                            start = point.clone();
+                        
+                        if start.is_none() {
+                            start = Some(point.clone());
+                            current_batch = 1;
+                        } else {
+                            current_batch += 1;
                         }
 
-                        if point.slot_or_default() - start.slot_or_default() >= batch_size.into() {
+                        let s = start.clone().unwrap_or(point.clone());
+                        // (start, point) 
+                        if current_batch >= batch_size.into() {
                             block_batches
-                                .send((start, point.clone()))
+                                .send((s, point.clone()))
                                 .expect("unable to send block batch");
-                            start = point.clone();
+                            start = None;
+                            current_batch = 0;
                         }
+                        prev = Some(point.clone());
                     }
                     chainsync::NextResponse::RollBackward(rollback_to, _) => {
                         log::info!(target: &relay[..11], "rollback to {:?}", rollback_to);
                         // Make sure we download these block ranges before rolling back
-                        if start != prev && start != Point::Origin {
-                            block_batches
-                                .send((start.clone(), prev.clone()))
-                                .expect("unable to send block batch before rollback");
+                        // If we have a start point and a previous point, make sure to download the blocks in that range before we roll back
+                        match (&start, &prev) {
+                            (Some(s), Some(p)) => {
+                                block_batches
+                                    .send((s.clone(), p.clone()))
+                                    .expect("unable to send block batch before rollback");
+                            },
+                            _ => {}
                         }
-                        // Rolling back in our dumb client is easy :)
-                        start = rollback_to.clone();
-                        prev = rollback_to.clone();
+                        // And then set start to none, since we've already downloaded rollback_to (in theory)
+                        start = None;
                     }
                     chainsync::NextResponse::Await => {
-                        log::info!(target: &relay[..11], "tip of chain reached");
-                        batch_size = 1;
+                        if batch_size > 1 {
+                            log::info!(target: &relay[..11], "tip of chain reached");
+                            batch_size = 1;
+                        }
                     }
                 };
             }
