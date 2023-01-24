@@ -54,7 +54,8 @@ impl BodySlurp {
     }
 
     fn shelley_or_alonzo_point(cbor: &Vec<u8>) -> Option<Point> {
-        let block = minicbor::decode::<alonzo::Block>(cbor).ok()?;
+        type BlockWrapper = (u16, alonzo::Block);
+        let (_, block) = minicbor::decode::<BlockWrapper>(cbor).ok()?;
         let header = block.header;
         Some(Point::Specific(
             header.header_body.slot,
@@ -63,7 +64,8 @@ impl BodySlurp {
     }
 
     fn babbage_point(cbor: &Vec<u8>) -> Option<Point> {
-        let block = minicbor::decode::<babbage::Block>(cbor).ok()?;
+        type BlockWrapper = (u16, babbage::Block);
+        let (_, block) = minicbor::decode::<BlockWrapper>(cbor).ok()?;
         let header = block.header;
         Some(Point::Specific(
             header.header_body.slot,
