@@ -1,11 +1,10 @@
 use std::{
     fs,
-    path::{PathBuf, Path},
+    path::{PathBuf},
     sync::{mpsc, Arc, Mutex},
     thread::{self, JoinHandle},
 };
 
-use anyhow::Context;
 use pallas::{
     codec::minicbor,
     ledger::{
@@ -30,8 +29,7 @@ pub struct HeaderSlurp {
 
     pub block_batches: mpsc::SyncSender<(Point, Point)>,
 
-    cursor_mutex: Arc<Mutex<()>>,
-    default_point: Option<Point>,
+    cursor_mutex: Arc<Mutex<Cursor>>,
     relay: String,
     join_handle: Option<JoinHandle<()>>,
 }
@@ -40,16 +38,14 @@ impl HeaderSlurp {
     pub fn new(
         relay: String,
         directory: PathBuf,
-        default_point: Option<Point>,
         batch_size: u8,
-        cursor_mutex: Arc<Mutex<()>>,
+        cursor_mutex: Arc<Mutex<Cursor>>,
         block_batches: mpsc::SyncSender<(Point, Point)>,
     ) -> Self {
         Self {
             base_directory: directory.clone(),
             directory: directory.join("headers"),
             relay,
-            default_point,
             batch_size,
             block_batches,
             cursor_mutex,
@@ -112,19 +108,7 @@ impl HeaderSlurp {
         // Read the latest cursor
         let gaurd = self.cursor_mutex.lock().unwrap();
         
-        let cursor_file = self.base_directory.join("cursors").join(&self.relay);
-        let known_points = if cursor_file.exists() {
-            log::info!(target: &self.relay[..11], "reading cursor file");
-            let cursor_contents = fs::read(cursor_file).with_context(|| "unable to load cursor file")?;
-            let cursor: Cursor = serde_cbor::from_slice(&cursor_contents[..]).with_context(|| "unable to parse cursor")?;
-            cursor.to_points()
-        } else if let Some(default_point) = self.default_point.clone() {
-            log::info!(target: &self.relay[..11], "syncing from default point {:?}", &self.default_point);
-            vec![default_point]
-        } else {
-            log::info!(target: &self.relay[..11], "syncing from origin");
-            vec![Point::Origin]
-        };
+        let known_points = gaurd.points.iter().map(|x| x.clone().into()).collect();
 
         drop(gaurd);
 

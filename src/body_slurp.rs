@@ -17,18 +17,20 @@ use pallas::{
     },
 };
 
-use crate::cursor::{Cursor, SerializablePoint};
+use ::minicbor::{to_vec as cbor_to_vec};
+
+use crate::cursor::{Cursor};
 
 pub struct BodySlurp {
     pub directory: PathBuf,
 
-    cursor_mutex: Arc<Mutex<()>>,
+    cursor_mutex: Arc<Mutex<Cursor>>,
     relay: String,
     join_handle: Option<JoinHandle<()>>,
 }
 
 impl BodySlurp {
-    pub fn new(relay: String, directory: PathBuf, cursor_mutex: Arc<Mutex<()>>) -> Self {
+    pub fn new(relay: String, directory: PathBuf, cursor_mutex: Arc<Mutex<Cursor>>) -> Self {
         Self {
             directory,
             cursor_mutex,
@@ -77,7 +79,7 @@ impl BodySlurp {
         ))
     }
 
-    fn handle_body(cursor_mutex: Arc<Mutex<()>>, relay: &String, base_directory: &PathBuf, body: Vec<u8>) {
+    fn handle_body(cursor_mutex: Arc<Mutex<Cursor>>, relay: &String, base_directory: &PathBuf, body: Vec<u8>) {
         let point = BodySlurp::ebb_point(&body)
             .or_else(|| BodySlurp::byron_point(&body))
             .or_else(|| BodySlurp::shelley_or_alonzo_point(&body))
@@ -90,16 +92,16 @@ impl BodySlurp {
             .expect(format!("unable to creact directory {:?}", path).as_str());
         fs::write(path, body).expect("could not save body");
 
-        let gaurd = cursor_mutex.lock();
+        {
+          let mut cursor_gaurd = cursor_mutex.lock().expect("unable to acquire lock");
 
-        let Point::Specific(slot, hash) = point else { unreachable!("") };
-        let cursor = Cursor{
-          points: vec![SerializablePoint{ slot, block_hash: hash }],
-        };
-        let cursor_bytes = serde_cbor::to_vec(&cursor).expect("unable to serialize cursor");
-        fs::write(base_directory.join("cursors").join(relay), cursor_bytes).expect("unable to write cursor file");
+          cursor_gaurd.add_point(point);
 
-        drop(gaurd);
+          let cursor_bytes = cbor_to_vec::<&Cursor>(&cursor_gaurd).expect("unable to serialize cursor");
+          fs::write(base_directory.join("cursors").join(relay), cursor_bytes).expect("unable to write cursor file");
+
+          drop(cursor_gaurd);
+        }
     }
 
     pub fn slurp(&mut self, channel: StdChannel, block_batches: Receiver<(Point, Point)>) {

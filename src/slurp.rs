@@ -1,7 +1,7 @@
 use std::{
     path::PathBuf,
     sync::{mpsc::{self, Receiver}, Mutex, Arc},
-    thread, fs,
+    thread, fs, collections::VecDeque,
 };
 
 use pallas::network::{
@@ -9,7 +9,7 @@ use pallas::network::{
     multiplexer::{bearers::Bearer, StdChannel, StdPlexer},
 };
 
-use crate::{body_slurp::BodySlurp, header_slurp::HeaderSlurp};
+use crate::{body_slurp::BodySlurp, header_slurp::HeaderSlurp, cursor::Cursor};
 
 pub struct Slurp {
     pub directory: PathBuf,
@@ -26,8 +26,21 @@ impl Slurp {
 
         fs::create_dir_all(directory.join("cursors")).expect("unable to create cursor directory");
 
-        let cursor_mutex = Arc::new(Mutex::new(()));
-        let headers = HeaderSlurp::new(relay.clone(), directory.clone(), default_point, 5, cursor_mutex.clone(), sender);
+        let cursor_file = directory.join("cursors").join(&relay);
+        let cursor = if cursor_file.exists() {
+            log::info!(target: &relay[..11], "reading cursor file");
+            let cursor_contents = fs::read(cursor_file).expect("unable to load cursor file");
+            minicbor::decode(&cursor_contents[..]).expect("unable to parse cursor")
+        } else if let Some(default_point) = default_point.clone() {
+            log::info!(target: &relay[..11], "syncing from default point {:?}", &default_point);
+            Cursor { points: VecDeque::<_>::from([default_point.into()]) }
+        } else {
+            log::info!(target: &relay[..11], "syncing from origin");
+            Cursor { points: VecDeque::<_>::from([Point::Origin.into()]) }
+        };
+
+        let cursor_mutex = Arc::new(Mutex::new(cursor));
+        let headers = HeaderSlurp::new(relay.clone(), directory.clone(), 5, cursor_mutex.clone(), sender);
         let bodies = BodySlurp::new(relay.clone(), directory.clone(), cursor_mutex.clone());
 
         Self {
@@ -77,7 +90,7 @@ impl Slurp {
         self.do_handshake(channel0);
 
         // execute the chainsync flow from an arbitrary point in the chain
-        self.headers.slurp(channel2);
+        self.headers.slurp(channel2).expect("unable to start slurping headers");
         self.bodies.slurp(channel3, self.receiver.take().unwrap());
         Ok(())
     }
