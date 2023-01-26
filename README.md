@@ -13,6 +13,28 @@ cardano-slurp
 You can specify custom values via command line or environment variable:
 
 ```shell
+$ cardano-slurp --help
+
+Connect to cardano nodes and download all blocks and transactions without processing them
+
+Usage: cardano-slurp [OPTIONS]
+
+Options:
+  -r, --relay <RELAY>
+          The cardano relay node to connect to [default: relays-new.cardano-mainnet.iohk.io:3001]
+  -t, --topology-file <TOPOLOGY_FILE>
+          A topology file to read for relays to connect to
+  -f, --fallback-point <FALLBACK_POINT>
+          
+  -d, --directory <DIRECTORY>
+          The directory to save blocks into [default: db]
+      --testnet-magic <TESTNET_MAGIC>
+          The network magic to use when communicating with nodes
+  -h, --help
+          Print help
+  -V, --version
+          Print version
+
 cardano-slurp --relay relays.cardano-mainnet.iohk.io:3001 --directory db --fallback-point 78416/f85c52e97c6ec4e171d92789e32331e624ee7a0c7ba18b578062727edb7d61f7
 
 RELAY=relays-new.cardano-mainnet.iohk.io:3001 cargo-slurp

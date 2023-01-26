@@ -6,6 +6,7 @@ Added
  - Added support for reading `topology.json` files
  - Save cursors for each relay, so we can resume where we left off
  - Allow specifying a starting point as an argument
+ - Allow specifying a network magic, for running against other networks
 
 [v0.1.0] - 2023-01-23
 

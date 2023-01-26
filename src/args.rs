@@ -14,12 +14,17 @@ pub struct Args {
     #[arg(short, long)]
     pub topology_file: Option<PathBuf>,
 
+    /// The point to start initially syncronizing from, if there are no cursor files
     #[arg(short, long, value_parser = parse_point)]
     pub fallback_point: Option<Point>,
 
     /// The directory to save blocks into
     #[arg(short, long, default_value = "db")]
     pub directory: PathBuf,
+
+    /// The network magic to use when communicating with nodes
+    #[arg(long)]
+    pub testnet_magic: Option<u64>
 }
 
 fn parse_point(s: &str) -> Result<Point, String> {

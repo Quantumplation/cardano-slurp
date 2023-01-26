@@ -22,7 +22,7 @@ fn main() {
     let mut connections = vec![];
 
     for relay in args.relay {
-        let slurp = Slurp::new(args.directory.clone(), relay, args.fallback_point.clone());
+        let slurp = Slurp::new(args.directory.clone(), relay, args.fallback_point.clone(), args.testnet_magic);
         connections.push(slurp);
     }
 
@@ -31,7 +31,7 @@ fn main() {
         let topology: Topology = serde_json::from_str(&file_contents).expect("unable to parse topology file");
         for producer in topology.producers {
             let url = format!("{}:{}", producer.address, producer.port);
-            let slurp = Slurp::new(args.directory.clone(), url, args.fallback_point.clone());
+            let slurp = Slurp::new(args.directory.clone(), url, args.fallback_point.clone(), args.testnet_magic);
             connections.push(slurp);
         }
     }

@@ -14,6 +14,7 @@ use crate::{body_slurp::BodySlurp, header_slurp::HeaderSlurp, cursor::Cursor};
 pub struct Slurp {
     pub directory: PathBuf,
     pub relay: String,
+    pub magic: Option<u64>,
 
     receiver: Option<Receiver<(Point, Point)>>,
     headers: HeaderSlurp,
@@ -21,7 +22,7 @@ pub struct Slurp {
 }
 
 impl Slurp {
-    pub fn new(directory: PathBuf, relay: String, default_point: Option<Point>) -> Self {
+    pub fn new(directory: PathBuf, relay: String, default_point: Option<Point>, magic: Option<u64>) -> Self {
         let (sender, receiver) = mpsc::sync_channel(10);
 
         fs::create_dir_all(directory.join("cursors")).expect("unable to create cursor directory");
@@ -47,6 +48,7 @@ impl Slurp {
             directory: directory,
             relay: relay,
             receiver: Some(receiver),
+            magic,
             headers,
             bodies,
         }
@@ -56,7 +58,7 @@ impl Slurp {
         let mut client = handshake::N2NClient::new(channel);
 
         let confirmation = client
-            .handshake(handshake::n2n::VersionTable::v7_and_above(MAINNET_MAGIC))
+            .handshake(handshake::n2n::VersionTable::v7_and_above(self.magic.unwrap_or(MAINNET_MAGIC)))
             .unwrap();
 
         match confirmation {

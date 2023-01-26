@@ -1,5 +1,6 @@
 [package]
 name = "cardano-slurp"
+description = "Connect to cardano nodes and download all blocks and transactions without processing them"
 version = "0.1.0"
 edition = "2021"
 
