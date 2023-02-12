@@ -81,19 +81,19 @@ impl Slurp {
         // setup the multiplexer by specifying the bearer and the IDs of the
         // miniprotocols to use
         let mut plexer = StdPlexer::new(bearer);
-        let channel0 = plexer.use_channel(0);
-        let channel2 = plexer.use_channel(2);
-        let channel3 = plexer.use_channel(3);
+        let handshake = plexer.use_channel(0);
+        let chainsync = plexer.use_channel(2);
+        let blockfetch = plexer.use_channel(3);
 
         plexer.muxer.spawn();
         plexer.demuxer.spawn();
 
         // execute the required handshake against the relay
-        self.do_handshake(channel0);
+        self.do_handshake(handshake);
 
         // execute the chainsync flow from an arbitrary point in the chain
-        self.headers.slurp(channel2).expect("unable to start slurping headers");
-        self.bodies.slurp(channel3, self.receiver.take().unwrap());
+        self.headers.slurp(chainsync).expect("unable to start slurping headers");
+        self.bodies.slurp(blockfetch, self.receiver.take().unwrap());
         Ok(())
     }
 

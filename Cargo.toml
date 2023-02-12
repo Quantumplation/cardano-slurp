@@ -7,7 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-pallas = { version="0.16.0" }
+pallas = { path="../pallas/pallas" }
 net2 = "0.2.37"
 env_logger = "0.10.0"
 hex = "0.4.3"
@@ -17,3 +17,5 @@ serde = "1.0.152"
 serde_json = "1.0.91"
 minicbor = { version = "0.19.0", features=["derive", "std"] }
 anyhow = "1.0.68"
+tracing = "0.1.37"
+tracing-subscriber = "0.3.16"
